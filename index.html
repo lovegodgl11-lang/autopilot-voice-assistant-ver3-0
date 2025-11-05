@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Autopilot voice assistant ver3.0</title><meta name="title" content="Autopilot voice assistant ver3.0"><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="./style.css"><script src="https://cdn.jsdelivr.net/npm/es-module-shims@1.10.0/dist/es-module-shims.js" async=""></script><script type="importmap">{
+  "imports": {}
+}</script></head><body>
+
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Assistant Kiosk</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
+
+    <!-- Custom Styles -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #111827; color: #f9fafb; }
+        #mic-btn.listening {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(99, 102, 241, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+        }
+        .transcript-user { text-align: right; color: #a5b4fc; }
+        .transcript-assistant { text-align: left; color: #e5e7eb; }
+        
+        .digital-font { font-family: 'Orbitron', sans-serif; }
+        .light {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #333;
+            transition: background-color 0.3s ease;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5) inset;
+        }
+        .light.red { background-color: #ef4444; box-shadow: 0 0 15px #ef4444; }
+        .light.yellow { background-color: #f59e0b; box-shadow: 0 0 15px #f59e0b; }
+        .light.green { background-color: #22c55e; box-shadow: 0 0 15px #22c55e; }
+    </style>
+
+
+    <div id="kiosk-view" class="w-full max-w-2xl mx-auto p-8 rounded-2xl shadow-lg bg-gray-800 text-center">
+        <h1 id="status-text" class="text-3xl font-bold mb-4">Welcome</h1>
+        <p id="sub-status-text" class="text-lg text-gray-400 mb-6">Click the microphone to get your token</p>
+
+        <div id="transcript-container" class="h-48 bg-gray-900 rounded-lg p-4 mb-6 overflow-y-auto text-left flex flex-col gap-2">
+            <!-- Transcript will appear here -->
+        </div>
+
+        <button id="mic-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full p-6 transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm5 8a5 5 0 01-10 0H0v1.5A1.5 1.5 0 001.5 15h17A1.5 1.5 0 0020 13.5V12h-2z" clip-rule="evenodd"></path>
+            </svg>
+        </button>
+
+        <div id="unsupported-browser" class="hidden mt-4 text-red-400">
+            <p>Sorry, your browser does not support the Web Speech API. Please use Google Chrome or Microsoft Edge.</p>
+        </div>
+    </div>
+    
+    <!-- Token Details View (New) -->
+    <div id="token-details-view" class="hidden w-full max-w-sm mx-auto bg-gray-800 text-white p-6 sm:p-8 rounded-2xl shadow-lg">
+        <h2 class="text-2xl font-bold text-center mb-6">Your Token Details</h2>
+        
+        <div class="space-y-4">
+            <div>
+                <p class="text-sm text-gray-400">Your Name</p>
+                <p id="customer-name-display" class="text-lg font-semibold">-</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-400">Your Token Number</p>
+                <p id="token-number-display" class="text-5xl font-extrabold text-indigo-400 text-center py-4">-</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-400">Current Status</p>
+                <p id="status-display" class="text-lg font-semibold text-center">-</p>
+            </div>
+            
+            <!-- Traffic Light ETA Display -->
+            <div id="traffic-light-container" class="hidden text-center p-4 bg-gray-900 rounded-lg">
+                <div class="flex justify-center items-center space-x-4 mb-3">
+                    <div id="light-red" class="light"></div>
+                    <div id="light-yellow" class="light"></div>
+                    <div id="light-green" class="light"></div>
+                </div>
+                <p id="eta-display" class="text-5xl digital-font tracking-widest"></p>
+                <p id="eta-status-text" class="mt-1 text-lg font-semibold uppercase tracking-wider"></p>
+            </div>
+
+            <div>
+                <p class="text-sm text-gray-400">Currently Serving Token</p>
+                <p id="serving-token-display" class="text-lg font-semibold text-center">-</p>
+            </div>
+        </div>
+        <button id="start-over-btn" class="mt-8 w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 font-semibold">New Customer</button>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyC0_DQIiyaVQllFH4pxH1Dm3r2kFXXoOgc",
+            authDomain: "navrosetailorapp.firebaseapp.com",
+            databaseURL: "https://navrosetailorapp-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "navrosetailorapp"
+        };
+
+        let db;
+        let recognition;
+        let state = 'IDLE'; // IDLE, WAITING_FOR_COMMAND, LISTENING_FOR_NAME, CONFIRMING_NAME, LISTENING_FOR_PHONE, CONFIRMING_PHONE, CREATING_TOKEN
+        let tempCustomer = { name: '', mobile: '' };
+        
+        let customerTokenRef = null;
+        let servingTokenRef = null;
+        let countdownInterval = null;
+        let autoResetTimer = null;
+
+        const kioskView = document.getElementById('kiosk-view');
+        const tokenDetailsView = document.getElementById('token-details-view');
+        const statusText = document.getElementById('status-text');
+        const subStatusText = document.getElementById('sub-status-text');
+        const micBtn = document.getElementById('mic-btn');
+        const transcriptContainer = document.getElementById('transcript-container');
+        
+        function getTodayDateString() {
+            return new Date().toISOString().slice(0, 10);
+        }
+
+        function updateTranscript(speaker, text) {
+            const p = document.createElement('p');
+            p.textContent = text;
+            p.className = speaker === 'user' ? 'transcript-user' : 'transcript-assistant';
+            transcriptContainer.appendChild(p);
+            transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+        }
+
+        function speak(text, onEndCallback) {
+            micBtn.classList.remove('listening');
+            updateTranscript('assistant', text);
+            
+            speechSynthesis.cancel(); // Prevent overlapping speech
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-IN';
+            utterance.rate = 0.9;
+            utterance.onend = () => {
+                if (onEndCallback) {
+                    onEndCallback();
+                }
+            };
+            speechSynthesis.speak(utterance);
+        }
+
+        function startListening() {
+            if (recognition && state !== 'CREATING_TOKEN') {
+                try {
+                    micBtn.classList.add('listening');
+                    recognition.start();
+                } catch(e) {
+                    micBtn.classList.remove('listening');
+                    console.error("Recognition start error:", e);
+                }
+            }
+        }
+        
+        function resetState() {
+            state = 'IDLE';
+            tempCustomer = { name: '', mobile: '' };
+            statusText.textContent = 'Welcome';
+            subStatusText.textContent = 'Click the microphone to get your token';
+            micBtn.classList.remove('listening');
+            micBtn.disabled = false;
+            // Clear transcript after a delay
+            setTimeout(() => {
+                transcriptContainer.innerHTML = '';
+            }, 8000);
+        }
+
+        function showKioskView() {
+            clearTimeout(autoResetTimer);
+            if(customerTokenRef) customerTokenRef.off();
+            if(servingTokenRef) servingTokenRef.off();
+            if (countdownInterval) clearInterval(countdownInterval);
+
+            kioskView.classList.remove('hidden');
+            tokenDetailsView.classList.add('hidden');
+            resetState();
+        }
+
+        function updateCountdown(eta) {
+            if (countdownInterval) clearInterval(countdownInterval);
+
+            const trafficLightContainer = document.getElementById('traffic-light-container');
+            const etaDisplay = document.getElementById('eta-display');
+            const etaStatusText = document.getElementById('eta-status-text');
+            const lightRed = document.getElementById('light-red');
+            const lightYellow = document.getElementById('light-yellow');
+            const lightGreen = document.getElementById('light-green');
+
+            if (!eta) {
+                trafficLightContainer.classList.add('hidden');
+                return;
+            }
+            trafficLightContainer.classList.remove('hidden');
+
+            const update = () => {
+                const now = new Date().getTime();
+                const distance = eta - now;
+
+                lightRed.classList.remove('red');
+                lightYellow.classList.remove('yellow');
+                lightGreen.classList.remove('green');
+
+                if (distance < 0) {
+                    clearInterval(countdownInterval);
+                    etaDisplay.textContent = 'SOON';
+                    etaStatusText.textContent = 'YOUR TURN IS NEXT';
+                    lightGreen.classList.add('green');
+                    return;
+                }
+
+                const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+                
+                etaDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                
+                if (minutes > 5) {
+                    etaStatusText.textContent = 'PLEASE WAIT';
+                    lightRed.classList.add('red');
+                } else if (minutes >= 1) {
+                    etaStatusText.textContent = 'GETTING CLOSER';
+                    lightYellow.classList.add('yellow');
+                } else {
+                    etaStatusText.textContent = 'YOUR TURN IS NEXT';
+                    lightGreen.classList.add('green');
+                }
+            };
+            
+            update();
+            countdownInterval = setInterval(update, 1000);
+        }
+
+        function renderTokenDetails(data) {
+            document.getElementById('status-display').textContent = data.status || '-';
+            if (data.status === 'Waiting' && data.eta) {
+                updateCountdown(data.eta);
+            } else {
+                if (countdownInterval) clearInterval(countdownInterval);
+                document.getElementById('traffic-light-container').classList.add('hidden');
+            }
+        }
+
+        function listenForTokenChanges(customerKey) {
+            const today = getTodayDateString();
+            const queueRef = db.ref(`queues/${today}`);
+            
+            customerTokenRef = db.ref(`queues/${today}/${customerKey}`);
+            customerTokenRef.on('value', tokenSnapshot => {
+                if (tokenSnapshot.exists()) {
+                    renderTokenDetails(tokenSnapshot.val());
+                } else {
+                    showKioskView(); // Token was removed or day ended
+                }
+            });
+
+            servingTokenRef = queueRef.orderByChild('status').equalTo('Serving');
+            servingTokenRef.on('value', snapshot => {
+                let servingToken = '-';
+                if (snapshot.exists()) {
+                    servingToken = Object.values(snapshot.val())[0].tokenNumber;
+                }
+                document.getElementById('serving-token-display').textContent = servingToken;
+            });
+        }
+        
+        function showTokenDetails(customerKey, customerName, tokenNumber) {
+            kioskView.classList.add('hidden');
+            tokenDetailsView.classList.remove('hidden');
+
+            document.getElementById('customer-name-display').textContent = customerName;
+            document.getElementById('token-number-display').textContent = tokenNumber;
+            document.getElementById('status-display').textContent = 'Waiting';
+
+            listenForTokenChanges(customerKey);
+            
+            clearTimeout(autoResetTimer);
+            autoResetTimer = setTimeout(showKioskView, 60000); // Reset after 60 seconds
+        }
+
+        async function createTokenInFirebase(customerName, mobileNumber) {
+            statusText.textContent = 'Generating Token...';
+            subStatusText.textContent = 'Please wait a moment.';
+            const today = getTodayDateString();
+            const queueRef = db.ref(`queues/${today}`);
+
+            try {
+                const snapshot = await queueRef.orderByChild('tokenNumber').limitToLast(1).once('value');
+                let lastToken = 0;
+                if (snapshot.exists()) {
+                    lastToken = Object.values(snapshot.val())[0].tokenNumber;
+                }
+                const newTokenNumber = lastToken + 1;
+                const newCustomer = {
+                    tokenNumber: newTokenNumber,
+                    customerName,
+                    mobileNumber,
+                    status: 'Waiting',
+                    timestamp: new Date().toISOString()
+                };
+
+                const newRef = await queueRef.push(newCustomer);
+                return { key: newRef.key, ...newCustomer };
+            } catch (error) {
+                console.error("Firebase error:", error);
+                speak("I'm sorry, there was an error creating your token. Please ask for assistance.", resetState);
+                return null;
+            }
+        }
+
+        function handleRecognitionResult(event) {
+            const transcript = Array.from(event.results)
+                .map(result => result[0])
+                .map(result => result.transcript)
+                .join('');
+            
+            micBtn.classList.remove('listening');
+            if(!transcript) return;
+            updateTranscript('user', transcript);
+            const lowercaseTranscript = transcript.toLowerCase().trim();
+
+            switch (state) {
+                case 'WAITING_FOR_COMMAND':
+                    if (lowercaseTranscript.includes('give me a token') || lowercaseTranscript.includes('i want a token') || lowercaseTranscript.includes('token')) {
+                        state = 'LISTENING_FOR_NAME';
+                        statusText.textContent = "What's your name?";
+                        subStatusText.textContent = 'Please clearly state your full name.';
+                        speak("Certainly. What's your name?", startListening);
+                    } else {
+                        speak("I didn't understand. Please say 'Give me a token' to start.", startListening);
+                    }
+                    break;
+                
+                case 'LISTENING_FOR_NAME':
+                    tempCustomer.name = transcript.trim();
+                    state = 'CONFIRMING_NAME';
+                    statusText.textContent = `Confirm Name: ${tempCustomer.name}`;
+                    subStatusText.textContent = 'Please say "Yes" or "No"';
+                    speak(`I heard ${tempCustomer.name}. Is that correct?`, startListening);
+                    break;
+
+                case 'CONFIRMING_NAME':
+                    if (lowercaseTranscript.includes('yes')) {
+                        state = 'LISTENING_FOR_PHONE';
+                        statusText.textContent = "What's your mobile number?";
+                        subStatusText.textContent = 'Please state your 10-digit mobile number.';
+                        speak("Great. What's your 10-digit mobile number?", startListening);
+                    } else {
+                        state = 'LISTENING_FOR_NAME';
+                        statusText.textContent = "What's your name?";
+                        subStatusText.textContent = 'Please clearly state your full name.';
+                        speak("My apologies. Please tell me your name again.", startListening);
+                    }
+                    break;
+                
+                case 'LISTENING_FOR_PHONE':
+                    const mobile = transcript.replace(/\s+/g, '').replace(/-/g, '');
+                    if (/^\d{10}$/.test(mobile)) {
+                        tempCustomer.mobile = mobile;
+                        state = 'CONFIRMING_PHONE';
+                        const spokenMobile = mobile.split('').join(' '); // "1 2 3..."
+                        statusText.textContent = `Confirm Number: ${tempCustomer.mobile}`;
+                        subStatusText.textContent = 'Please say "Yes" or "No"';
+                        speak(`I have your mobile number as ${spokenMobile}. Is this correct?`, startListening);
+                    } else {
+                        speak("I didn't catch a valid 10-digit mobile number. Please try again.", startListening);
+                    }
+                    break;
+
+                case 'CONFIRMING_PHONE':
+                    if (lowercaseTranscript.includes('yes')) {
+                        state = 'CREATING_TOKEN';
+                        micBtn.disabled = true; // Disable mic during creation
+                        createTokenInFirebase(tempCustomer.name, tempCustomer.mobile).then(customer => {
+                            micBtn.disabled = false;
+                            if (customer) {
+                                speak(`All set, ${customer.customerName}. Your token number is ${customer.tokenNumber}.`, () => {
+                                    showTokenDetails(customer.key, customer.customerName, customer.tokenNumber);
+                                });
+                            }
+                        });
+                    } else {
+                        state = 'LISTENING_FOR_PHONE';
+                        statusText.textContent = "What's your mobile number?";
+                        subStatusText.textContent = 'Please state your 10-digit mobile number.';
+                        speak("Okay, let's try the mobile number again.", startListening);
+                    }
+                    break;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                db = firebase.database();
+
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (SpeechRecognition) {
+                    recognition = new SpeechRecognition();
+                    recognition.continuous = false;
+                    recognition.lang = 'en-IN';
+                    recognition.interimResults = false;
+                    recognition.maxAlternatives = 1;
+
+                    recognition.onresult = handleRecognitionResult;
+
+                    recognition.onend = () => {
+                        micBtn.classList.remove('listening');
+                    };
+
+                    recognition.onerror = (event) => {
+                        micBtn.classList.remove('listening');
+                        console.error('Speech recognition error:', event.error);
+                        if (event.error === 'not-allowed') {
+                            statusText.textContent = 'Microphone Access Denied';
+                            subStatusText.textContent = 'Please enable microphone access in your browser settings.';
+                            speak("I can't hear you. Please allow microphone access for this site in your browser settings, then try again.");
+                        } else if (event.error === 'no-speech') {
+                            if (state !== 'IDLE') {
+                                speak("I didn't hear anything. Let's try that again.", startListening);
+                            }
+                        } else {
+                            speak("Sorry, I ran into a problem with voice recognition. Let's start over.", resetState);
+                        }
+                    };
+                } else {
+                    document.getElementById('unsupported-browser').classList.remove('hidden');
+                    micBtn.disabled = true;
+                    statusText.textContent = 'Browser Not Supported';
+                }
+
+                micBtn.addEventListener('click', () => {
+                    if (!recognition) return;
+                    if (state === 'IDLE') {
+                        state = 'WAITING_FOR_COMMAND';
+                        statusText.textContent = 'Listening...';
+                        subStatusText.textContent = "Please say 'Give me a token'";
+                        speak("How can I help you?", startListening);
+                    }
+                });
+                
+                document.getElementById('start-over-btn').addEventListener('click', showKioskView);
+
+            } catch (e) {
+                console.error("Initialization failed:", e);
+                alert("Could not connect to the service. The kiosk will not work.");
+            }
+        });
+    </script>
+
+<script src="./script.js"></script></body></html>
