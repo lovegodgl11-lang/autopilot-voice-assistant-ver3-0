@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Autopilot voice assistant ver3.0</title><meta name="title" content="Autopilot voice assistant ver3.0"><meta charset="UTF-8">
+<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Autopilot voice assistant ver3</title><meta name="title" content="Autopilot voice assistant ver3"><meta name="description" content="Update version "><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="./style.css"><script src="https://cdn.jsdelivr.net/npm/es-module-shims@1.10.0/dist/es-module-shims.js" async=""></script><script type="importmap">{
   "imports": {}
 }</script></head><body>
@@ -115,6 +115,7 @@
         let recognition;
         let state = 'IDLE'; // IDLE, WAITING_FOR_COMMAND, LISTENING_FOR_NAME, CONFIRMING_NAME, LISTENING_FOR_PHONE, CONFIRMING_PHONE, CREATING_TOKEN
         let tempCustomer = { name: '', mobile: '' };
+        let isRecognizing = false;
         
         let customerTokenRef = null;
         let servingTokenRef = null;
@@ -141,6 +142,10 @@
         }
 
         function speak(text, onEndCallback) {
+            // Stop any active recognition before speaking to prevent conflicts.
+            if (recognition && isRecognizing) {
+                recognition.stop();
+            }
             micBtn.classList.remove('listening');
             updateTranscript('assistant', text);
             
@@ -158,11 +163,11 @@
         }
 
         function startListening() {
-            if (recognition && state !== 'CREATING_TOKEN') {
+            if (recognition && state !== 'CREATING_TOKEN' && !isRecognizing) {
                 try {
-                    micBtn.classList.add('listening');
                     recognition.start();
                 } catch(e) {
+                    isRecognizing = false;
                     micBtn.classList.remove('listening');
                     console.error("Recognition start error:", e);
                 }
@@ -329,7 +334,6 @@
                 .map(result => result.transcript)
                 .join('');
             
-            micBtn.classList.remove('listening');
             if(!transcript) return;
             updateTranscript('user', transcript);
             const lowercaseTranscript = transcript.toLowerCase().trim();
@@ -419,13 +423,20 @@
                     recognition.interimResults = false;
                     recognition.maxAlternatives = 1;
 
+                    recognition.onstart = () => {
+                        isRecognizing = true;
+                        micBtn.classList.add('listening');
+                    };
+                    
                     recognition.onresult = handleRecognitionResult;
 
                     recognition.onend = () => {
+                        isRecognizing = false;
                         micBtn.classList.remove('listening');
                     };
 
                     recognition.onerror = (event) => {
+                        isRecognizing = false;
                         micBtn.classList.remove('listening');
                         console.error('Speech recognition error:', event.error);
                         if (event.error === 'not-allowed') {
